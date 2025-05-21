@@ -37,8 +37,8 @@ APP_OBJ = $(APP_SRC:.c=.o)
 CLIENT_OBJ = $(CLIENT_SRC:.c=.o)
 
 # Executables
-APP_EXE = drone_controller_app
-CLIENT_EXE = drone_client_exe
+APP_EXE = server
+CLIENT_EXE = drone
 
 # Default target
 all: $(APP_EXE) $(CLIENT_EXE)

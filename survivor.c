@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include "headers/globals.h"
 #include "headers/map.h"
+#include <signal.h>
 
 extern volatile sig_atomic_t global_shutdown_flag;
 
@@ -31,6 +32,12 @@ void *survivor_generator(void *args) {
 
     while (!global_shutdown_flag) {
         Coord coord = {.x = rand() % map.width, .y = rand() % map.height};
+        
+        if (coord.x < 0 || coord.x >= map.width || coord.y < 0 || coord.y >= map.height) {
+            printf("Generated invalid coordinates (%d, %d), retrying...\n", coord.x, coord.y);
+            continue;
+        }
+        
         char info[25];
         snprintf(info, sizeof(info), "SURV-%04d", rand() % 10000);
         time(&t);

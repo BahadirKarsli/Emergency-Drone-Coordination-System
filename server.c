@@ -282,8 +282,21 @@ void process_handshake(int sock, struct json_object *jobj, const char* client_ip
         new_drone->id = new_drone_id_val;
         new_drone->sock = sock;
         new_drone->status = IDLE;
+        
+        // Ensure drone spawns within valid map bounds
         new_drone->coord.x = rand() % map.width;
         new_drone->coord.y = rand() % map.height;
+        
+        // Validate coordinates
+        if (new_drone->coord.x < 0 || new_drone->coord.x >= map.width || 
+            new_drone->coord.y < 0 || new_drone->coord.y >= map.height) {
+            printf("Generated invalid drone coordinates, fixing to valid range\n");
+            new_drone->coord.x = new_drone->coord.x % map.width;
+            new_drone->coord.y = new_drone->coord.y % map.height;
+            if (new_drone->coord.x < 0) new_drone->coord.x = 0;
+            if (new_drone->coord.y < 0) new_drone->coord.y = 0;
+        }
+        
         new_drone->target.x = 0;
         new_drone->target.y = 0;
         
@@ -432,6 +445,15 @@ void process_mission_complete(int sock, struct json_object *jobj) {
                     // Only remove from active list if successfully added to helped list
                     if (survivors->removenode(survivors, survivor_node_to_remove) == 0) {
                         printf("Survivor %s removed from active list.\n", mission_id);
+                        
+                        // Also remove from the map cell
+                        pthread_mutex_lock(&map.cells[found_survivor->coord.y][found_survivor->coord.x].survivors->lock);
+                        map.cells[found_survivor->coord.y][found_survivor->coord.x].survivors->removedata(
+                            map.cells[found_survivor->coord.y][found_survivor->coord.x].survivors, 
+                            found_survivor
+                        );
+                        pthread_mutex_unlock(&map.cells[found_survivor->coord.y][found_survivor->coord.x].survivors->lock);
+                        
                     } else {
                         fprintf(stderr, "Failed to remove survivor %s from active list.\n", mission_id);
                     }

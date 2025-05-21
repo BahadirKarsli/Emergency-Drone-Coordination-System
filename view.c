@@ -71,15 +71,19 @@ int init_sdl_window() {
 
 void draw_cell(int x, int y, SDL_Color color) {
     if (x < 0 || x >= map.width || y < 0 || y >= map.height) {
+        printf("Warning: Attempted to draw cell outside map bounds at (%d, %d)\n", x, y);
         return;
     }
 
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    
+    // Note: In SDL, (0,0) is the top-left corner, so we map coordinates directly
+    // x = column (width), y = row (height)
     SDL_Rect rect = {
-        y * CELL_SIZE + 1,
-        x * CELL_SIZE + 1,
-        CELL_SIZE - 2,
-        CELL_SIZE - 2
+        x * CELL_SIZE + 1,  // x coordinate on screen
+        y * CELL_SIZE + 1,  // y coordinate on screen
+        CELL_SIZE - 2,     // width
+        CELL_SIZE - 2      // height
     };
     SDL_RenderFillRect(renderer, &rect);
 }

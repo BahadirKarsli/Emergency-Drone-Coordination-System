@@ -27,14 +27,14 @@ void init_map(int height, int width) {
 
         // Initialize each cell
         for (int j = 0; j < width; j++) {
-            map.cells[i][j].coord.x = i;
-            map.cells[i][j].coord.y = j;
+            map.cells[i][j].coord.x = j;  // x is horizontal (column)
+            map.cells[i][j].coord.y = i;  // y is vertical (row)
             // Create a survivor list for this cell (capacity 10)
             map.cells[i][j].survivors = create_list(sizeof(Survivor), 10);
         }
     }
 
-    printf("Map initialized: %dx%d\n", height, width);
+    printf("Map initialized: %dx%d (width x height)\n", width, height);
 }
 
 void freemap() {

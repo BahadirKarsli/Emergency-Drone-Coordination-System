@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <json-c/json.h>
+#include <signal.h>
 
 extern volatile sig_atomic_t global_shutdown_flag;
 

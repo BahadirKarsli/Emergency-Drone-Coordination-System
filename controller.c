@@ -98,9 +98,9 @@ int main() {
     
     // Initialize map
     printf("Initializing map...\n");
-    init_map(40, 30);  // 40 height, 30 width
+    init_map(30, 40);  // height=30, width=40 cells
     printf("Map initialized: %dx%d\n", map.width, map.height);
-    printf("Map initialized. map.width=%d, map.height=%d\n", map.width, map.height);
+    printf("Map dimensions: width=%d, height=%d\n", map.width, map.height);
     
     // Initialize lists
     printf("Creating survivor list...\n");
