@@ -82,7 +82,7 @@ void *drone_behavior(void *arg) {
             }
         }
         pthread_mutex_unlock(&d->lock);
-        usleep(100000); // Sleep for 100ms
+        usleep(1000); // Sleep for 1ms (even faster movement)
     }
     return NULL;
 }

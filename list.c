@@ -76,11 +76,8 @@ static Node *find_memcell_fornode(List *list) {
 }
 
 Node *add(List *list, void *data) {
-    printf("In add(): list=%p, data=%p\n", (void*)list, data);
-    fflush(stdout);
+    printf("[DEBUG] add() start: list=%p, data=%p\n", (void*)list, data);
     pthread_mutex_lock(&list->lock);
-    printf("In add(): after locking list->lock\n");
-    fflush(stdout);
     if (list->number_of_elements >= list->capacity) {
         perror("list is full!");
         pthread_mutex_unlock(&list->lock);
@@ -88,13 +85,9 @@ Node *add(List *list, void *data) {
     }
 
     Node *node = find_memcell_fornode(list);
-    printf("In add(): after find_memcell_fornode, node=%p\n", (void*)node);
-    fflush(stdout);
     if (node != NULL) {
         node->occupied = 1;
         memcpy(node->data, data, list->datasize);
-        printf("In add(): after memcpy\n");
-        fflush(stdout);
         if (list->head != NULL) {
             Node *oldhead = list->head;
             oldhead->prev = node;
@@ -111,8 +104,7 @@ Node *add(List *list, void *data) {
         perror("list is full!");
     }
     pthread_mutex_unlock(&list->lock);
-    printf("In add(): after unlocking list->lock\n");
-    fflush(stdout);
+    printf("[DEBUG] add() end: list=%p, node=%p\n", (void*)list, (void*)node);
     return node;
 }
 
