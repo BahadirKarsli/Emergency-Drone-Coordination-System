@@ -81,7 +81,13 @@ int main() {
     json_object_put(ack);
 
     while (1) {
+        // Move the drone if it's on a mission
         pthread_mutex_lock(&drone.lock);
+        if (drone.status == ON_MISSION) {
+            navigate_to_target(&drone);
+        }
+        
+        // Send status update
         struct json_object *status = json_object_new_object();
         json_object_object_add(status, "type", json_object_new_string("STATUS_UPDATE"));
         json_object_object_add(status, "drone_id", json_object_new_string(drone_id));
@@ -97,22 +103,16 @@ int main() {
         printf("Sent STATUS_UPDATE: x=%d, y=%d, status=%s\n",
                drone.coord.x, drone.coord.y, drone.status == IDLE ? "idle" : "busy");
         json_object_put(status);
-
-        if (drone.status == ON_MISSION) {
-            navigate_to_target(&drone);
-        }
         pthread_mutex_unlock(&drone.lock);
 
+        // Check for messages from server
         struct json_object *msg = receive_json(sock);
         if (!msg) {
-            // Server may not have sent anything, which is okay
-            // Only exit if we know it's not just a timeout
             if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
                 fprintf(stderr, "Server disconnected\n");
                 break;
             }
         } else {
-            // Process the message
             const char *type = json_object_get_string(json_object_object_get(msg, "type"));
             printf("Received message: type=%s\n", type ? type : "NULL");
             
@@ -144,7 +144,7 @@ int main() {
             json_object_put(msg);
         }
         
-        sleep(1);
+        usleep(50000); // 0.05 seconds (even faster movement)
     }
 
     close(sock);
@@ -200,11 +200,13 @@ struct json_object *receive_json(int sock) {
 }
 
 void navigate_to_target(Drone *drone) {
+    // Move both x and y coordinates simultaneously for smoother movement
     if (drone->coord.x < drone->target.x) drone->coord.x++;
-    else if (drone->coord.x > drone->target.x) drone->coord.x--;
+    if (drone->coord.x > drone->target.x) drone->coord.x--;
     if (drone->coord.y < drone->target.y) drone->coord.y++;
-    else if (drone->coord.y > drone->target.y) drone->coord.y--;
+    if (drone->coord.y > drone->target.y) drone->coord.y--;
 
+    // Only send mission complete when we're exactly at the target
     if (drone->coord.x == drone->target.x && drone->coord.y == drone->target.y) {
         drone->status = IDLE;
         char drone_id[10];

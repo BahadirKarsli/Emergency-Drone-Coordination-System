@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <math.h>
 
 #define GRID_SIZE 30
 #define CELL_SIZE 20
@@ -88,53 +89,58 @@ void draw_cell(int x, int y, SDL_Color color) {
     SDL_RenderFillRect(renderer, &rect);
 }
 
+void draw_drone(SDL_Renderer *renderer, int x, int y, DroneStatus status) {
+    // Convert grid coordinates to screen coordinates
+    int screen_x = x * CELL_SIZE + CELL_SIZE/2;
+    int screen_y = y * CELL_SIZE + CELL_SIZE/2;
+    
+    // Set color based on status
+    if (status == IDLE) {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255); // Blue for idle
+    } else {
+        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // Green for on mission
+    }
+    
+    // Draw a larger square drone
+    SDL_Rect drone_rect = {
+        screen_x - CELL_SIZE/2,  // Center the drone
+        screen_y - CELL_SIZE/2,  // Center the drone
+        CELL_SIZE,              // Make it full cell size
+        CELL_SIZE               // Make it full cell size
+    };
+    SDL_RenderFillRect(renderer, &drone_rect);
+}
+
 void draw_drones() {
     if (!drones || !renderer) return;
 
     pthread_mutex_lock(&drones->lock);
     Node *current = drones->head;
+    int drone_count = 0;
     while (current != NULL) {
         Drone *drone = (Drone *)current->data;
         if (drone) {
             pthread_mutex_lock(&drone->lock);
 
-            SDL_Color drone_color;
-            switch (drone->status) {
-                case IDLE:
-                    drone_color = BLUE;
-                    break;
-                case ON_MISSION:
-                    drone_color = GREEN;
-                    break;
-                case DISCONNECTED:
-                    drone_color = GRAY;
-                    break;
-                default:
-                    drone_color = YELLOW;
-                    break;
-            }
+            draw_drone(renderer, drone->coord.x, drone->coord.y, drone->status);
 
-            if (drone->coord.x >= 0 && drone->coord.x < map.width &&
-                drone->coord.y >= 0 && drone->coord.y < map.height) {
-                printf("Drawing drone %d at (%d, %d), status=%d\n", drone->id, drone->coord.x, drone->coord.y, drone->status);
-                draw_cell(drone->coord.x, drone->coord.y, drone_color);
-
-                if (drone->status == ON_MISSION) {
-                    if (drone->target.x >= 0 && drone->target.x < map.width &&
-                        drone->target.y >= 0 && drone->target.y < map.height) {
-                        SDL_SetRenderDrawColor(renderer, GREEN.r, GREEN.g, GREEN.b, 200);
-                        SDL_RenderDrawLine(renderer, 
-                                         drone->coord.x * CELL_SIZE + CELL_SIZE / 2, 
-                                         drone->coord.y * CELL_SIZE + CELL_SIZE / 2, 
-                                         drone->target.x * CELL_SIZE + CELL_SIZE / 2, 
-                                         drone->target.y * CELL_SIZE + CELL_SIZE / 2);
-                    }
+            if (drone->status == ON_MISSION) {
+                if (drone->target.x >= 0 && drone->target.x < map.width &&
+                    drone->target.y >= 0 && drone->target.y < map.height) {
+                    SDL_SetRenderDrawColor(renderer, GREEN.r, GREEN.g, GREEN.b, 200);
+                    SDL_RenderDrawLine(renderer, 
+                                     drone->coord.x * CELL_SIZE + CELL_SIZE / 2, 
+                                     drone->coord.y * CELL_SIZE + CELL_SIZE / 2, 
+                                     drone->target.x * CELL_SIZE + CELL_SIZE / 2, 
+                                     drone->target.y * CELL_SIZE + CELL_SIZE / 2);
                 }
             }
             pthread_mutex_unlock(&drone->lock);
         }
+        drone_count++;
         current = current->next;
     }
+    printf("[VIEW DEBUG] Total drones drawn: %d\n", drone_count);
     pthread_mutex_unlock(&drones->lock);
 }
 
@@ -151,6 +157,7 @@ void draw_survivors() {
         if (s) {
             if (s->coord.x >= 0 && s->coord.x < map.width &&
                 s->coord.y >= 0 && s->coord.y < map.height) {
+                printf("[VIEW DEBUG] Drawing survivor at (%d, %d)\n", s->coord.x, s->coord.y);
                 draw_cell(s->coord.x, s->coord.y, RED);
             }
         }
@@ -165,17 +172,21 @@ void draw_survivors() {
     if (!helpedsurvivors || !renderer) return;
     pthread_mutex_lock(&helpedsurvivors->lock);
     current = helpedsurvivors->head;
+    int helped_count = 0;
     while(current != NULL) {
         Survivor* s = (Survivor*)current->data;
         if (s) {
             if (s->coord.x >= 0 && s->coord.x < map.width &&
                 s->coord.y >= 0 && s->coord.y < map.height) {
                 SDL_Color helped_survivor_color = {255, 100, 100, 255};
+                printf("[VIEW DEBUG] Drawing helped survivor at (%d, %d)\n", s->coord.x, s->coord.y);
                 draw_cell(s->coord.x, s->coord.y, helped_survivor_color);
             }
         }
+        helped_count++;
         current = current->next;
     }
+    printf("[VIEW DEBUG] Total helped survivors drawn: %d\n", helped_count);
     pthread_mutex_unlock(&helpedsurvivors->lock);
 }
 
@@ -221,4 +232,16 @@ void quit_all() {
     if (window) SDL_DestroyWindow(window);
     SDL_Quit();
     printf("SDL Quit successfully.\n");
+}
+
+void draw_circle(int center_x, int center_y, int radius, int r, int g, int b) {
+    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+    
+    for (int x = -radius; x <= radius; x++) {
+        for (int y = -radius; y <= radius; y++) {
+            if (x*x + y*y <= radius*radius) {
+                SDL_RenderDrawPoint(renderer, center_x + x, center_y + y);
+            }
+        }
+    }
 }

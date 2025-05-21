@@ -10,6 +10,7 @@
 #include <time.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdbool.h>
 #include "headers/globals.h"
 #include "headers/ai.h"
 #include "headers/map.h"
@@ -46,7 +47,6 @@ void *run_server_loop(void *args) {
     int server_fd;
     struct sockaddr_in address;
     int opt = 1;
-    int addrlen = sizeof(address);
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         perror("socket failed");
@@ -333,53 +333,99 @@ void process_handshake(int sock, struct json_object *jobj, const char* client_ip
 }
 
 void process_status_update(int sock, struct json_object *jobj) {
-    struct json_object *drone_id_obj, *loc_obj, *status_obj, *timestamp_obj;
-    struct json_object *battery_obj, *speed_obj;
-
-    if (!json_object_object_get_ex(jobj, "drone_id", &drone_id_obj) ||
-        !json_object_object_get_ex(jobj, "location", &loc_obj) ||
-        !json_object_object_get_ex(jobj, "status", &status_obj) ||
-        !json_object_object_get_ex(jobj, "timestamp", &timestamp_obj) ||
-        !json_object_object_get_ex(jobj, "battery", &battery_obj) ||
-        !json_object_object_get_ex(jobj, "speed", &speed_obj) ) {
-        fprintf(stderr, "STATUS_UPDATE missing fields.\n");
-        return;
-    }
-    const char *drone_id_str = json_object_get_string(drone_id_obj);
-    int id_val;
-     if (sscanf(drone_id_str, "D%d", &id_val) != 1) {
-        fprintf(stderr, "Invalid drone_id format in STATUS_UPDATE: %s\n", drone_id_str);
-        return;
-    }
-
-    Drone *drone = find_drone_by_id(id_val);
-    if (!drone) {
-        fprintf(stderr, "Drone %s not found for STATUS_UPDATE.\n", drone_id_str);
-        return;
-    }
-
-    pthread_mutex_lock(&drone->lock);
-    struct json_object *x_obj, *y_obj;
-    if (json_object_object_get_ex(loc_obj, "x", &x_obj) && json_object_object_get_ex(loc_obj, "y", &y_obj)) {
-        drone->coord.x = json_object_get_int(x_obj);
-        drone->coord.y = json_object_get_int(y_obj);
-    }
-
-    const char *status_str = json_object_get_string(status_obj);
-    if (strcmp(status_str, "idle") == 0) {
-        drone->status = IDLE;
-    } else if (strcmp(status_str, "busy") == 0) {
-        drone->status = ON_MISSION;
-    } else if (strcmp(status_str, "charging") == 0) {
-        // drone->status = CHARGING; // If you add this enum state
+    const char *drone_id = json_object_get_string(json_object_object_get(jobj, "drone_id"));
+    struct json_object *loc = json_object_object_get(jobj, "location");
+    int new_x = json_object_get_int(json_object_object_get(loc, "x"));
+    int new_y = json_object_get_int(json_object_object_get(loc, "y"));
+    const char *status_str = json_object_get_string(json_object_object_get(jobj, "status"));
+    DroneStatus new_status = strcmp(status_str, "idle") == 0 ? IDLE : ON_MISSION;
+    
+    // Extract drone ID number
+    int drone_num;
+    sscanf(drone_id + 1, "%d", &drone_num);
+    
+    pthread_mutex_lock(&drones->lock);
+    Node *current = drones->head;
+    Drone *drone = NULL;
+    
+    while (current != NULL) {
+        Drone *d = (Drone *)current->data;
+        if (d->id == drone_num) {
+            drone = d;
+            break;
+        }
+        current = current->next;
     }
     
-    time_t now;
-    time(&now);
-    drone->last_update = *localtime(&now);
-
-    printf("Drone %s (ID: %d) updated: loc=(%d,%d), status=%s\n", drone_id_str, drone->id, drone->coord.x, drone->coord.y, status_str);
-    pthread_mutex_unlock(&drone->lock);
+    if (drone) {
+        pthread_mutex_lock(&drone->lock);
+        printf("[DEBUG] Drone %d position update: (%d,%d) -> (%d,%d)\n",
+               drone->id, drone->coord.x, drone->coord.y, new_x, new_y);
+        drone->coord.x = new_x;
+        drone->coord.y = new_y;
+        drone->status = new_status;
+        printf("[DEBUG] Drone %s (ID: %d) final state: loc=(%d,%d), status=%s\n",
+               drone_id, drone->id, drone->coord.x, drone->coord.y,
+               drone->status == IDLE ? "idle" : "busy");
+        pthread_mutex_unlock(&drone->lock);
+    }
+    pthread_mutex_unlock(&drones->lock);
+    
+    // Check if drone is at a survivor's position
+    pthread_mutex_lock(&survivors->lock);
+    Node* survivor_current = survivors->head;
+    Node* prev = NULL;
+    bool found_survivor = false;
+    
+    while (survivor_current != NULL && !found_survivor) {
+        Survivor* s = (Survivor*)survivor_current->data;
+        if (new_x == s->coord.x && new_y == s->coord.y) {
+            printf("[DEBUG] Found survivor %s at (%d,%d) for removal.\n", 
+                   s->info, s->coord.x, s->coord.y);
+            
+            // Create mission complete message
+            struct json_object *complete_msg = json_object_new_object();
+            json_object_object_add(complete_msg, "type", json_object_new_string("MISSION_COMPLETE"));
+            json_object_object_add(complete_msg, "drone_id", json_object_new_string(drone_id));
+            json_object_object_add(complete_msg, "mission_id", json_object_new_string(s->info));
+            json_object_object_add(complete_msg, "success", json_object_new_boolean(true));
+            json_object_object_add(complete_msg, "details", json_object_new_string("Delivered aid to survivor"));
+            
+            // Send mission complete message
+            send_json(sock, complete_msg);
+            json_object_put(complete_msg);
+            
+            // Remove the survivor from the list
+            if (prev == NULL) {
+                survivors->head = survivor_current->next;
+            } else {
+                prev->next = survivor_current->next;
+            }
+            
+            // Add to helped survivors list
+            pthread_mutex_lock(&helpedsurvivors->lock);
+            add(helpedsurvivors, s);
+            pthread_mutex_unlock(&helpedsurvivors->lock);
+            
+            // Don't free the survivor data since we moved it to helped survivors
+            free(survivor_current);
+            
+            // Update drone status to idle
+            if (drone) {
+                pthread_mutex_lock(&drone->lock);
+                drone->status = IDLE;
+                pthread_mutex_unlock(&drone->lock);
+            }
+            
+            printf("[DEBUG] Updated drone %d position to (%d,%d) after mission completion\n",
+                   drone_num, new_x, new_y);
+            found_survivor = true;
+        } else {
+            prev = survivor_current;
+            survivor_current = survivor_current->next;
+        }
+    }
+    pthread_mutex_unlock(&survivors->lock);
 }
 
 void process_mission_complete(int sock, struct json_object *jobj) {
@@ -429,6 +475,15 @@ void process_mission_complete(int sock, struct json_object *jobj) {
         }
 
         if (found_survivor) {
+            // Update drone position to survivor's position
+            drone->coord.x = found_survivor->coord.x;
+            drone->coord.y = found_survivor->coord.y;
+            printf("[DEBUG] Updated drone %d position to (%d,%d) after mission completion\n", 
+                   drone->id, drone->coord.x, drone->coord.y);
+        }
+
+        if (found_survivor) {
+            printf("[DEBUG] Found survivor %s at (%d,%d) for removal.\n", mission_id, found_survivor->coord.x, found_survivor->coord.y);
             // Create a copy for the helped survivors list
             Survivor* helped_survivor = (Survivor*)malloc(sizeof(Survivor));
             if (helped_survivor) {
@@ -453,7 +508,7 @@ void process_mission_complete(int sock, struct json_object *jobj) {
                             found_survivor
                         );
                         pthread_mutex_unlock(&map.cells[found_survivor->coord.y][found_survivor->coord.x].survivors->lock);
-                        
+                        printf("[DEBUG] Survivor %s removed from map cell (%d,%d).\n", mission_id, found_survivor->coord.x, found_survivor->coord.y);
                     } else {
                         fprintf(stderr, "Failed to remove survivor %s from active list.\n", mission_id);
                     }
@@ -464,14 +519,23 @@ void process_mission_complete(int sock, struct json_object *jobj) {
             } else {
                 perror("Failed to allocate memory for helped survivor");
             }
+        } else {
+            printf("[DEBUG] Survivor %s not found in survivors list.\n", mission_id);
         }
 
         pthread_mutex_unlock(&helpedsurvivors->lock);
         pthread_mutex_unlock(&survivors->lock);
+
+        // Immediately spawn a new survivor
+        printf("[DEBUG] Spawning a new survivor after mission complete.\n");
+        pthread_t temp_thread;
+        pthread_create(&temp_thread, NULL, survivor_generator, NULL);
+        pthread_detach(temp_thread);
     }
     
     // Always set drone back to IDLE, whether mission succeeded or failed
     drone->status = IDLE;
+    printf("[DEBUG] Drone %d set to IDLE at (%d, %d).\n", drone->id, drone->coord.x, drone->coord.y);
     if (!success) {
         printf("Drone %s (ID: %d) failed mission %s.\n", drone_id_str, drone->id, mission_id);
     }
