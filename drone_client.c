@@ -8,6 +8,7 @@
 #include <json-c/json.h>
 #include <time.h>
 #include <errno.h>
+#include <sys/time.h>
 #include "headers/drone.h"
 #include "headers/coord.h"
 
@@ -81,7 +82,13 @@ int main() {
     json_object_put(ack);
 
     while (1) {
+        // Move the drone if it's on a mission
         pthread_mutex_lock(&drone.lock);
+        if (drone.status == ON_MISSION) {
+            navigate_to_target(&drone);
+        }
+        
+        // Send status update
         struct json_object *status = json_object_new_object();
         json_object_object_add(status, "type", json_object_new_string("STATUS_UPDATE"));
         json_object_object_add(status, "drone_id", json_object_new_string(drone_id));
@@ -97,22 +104,16 @@ int main() {
         printf("Sent STATUS_UPDATE: x=%d, y=%d, status=%s\n",
                drone.coord.x, drone.coord.y, drone.status == IDLE ? "idle" : "busy");
         json_object_put(status);
-
-        if (drone.status == ON_MISSION) {
-            navigate_to_target(&drone);
-        }
         pthread_mutex_unlock(&drone.lock);
 
+        // Check for messages from server
         struct json_object *msg = receive_json(sock);
         if (!msg) {
-            // Server may not have sent anything, which is okay
-            // Only exit if we know it's not just a timeout
             if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
                 fprintf(stderr, "Server disconnected\n");
                 break;
             }
         } else {
-            // Process the message
             const char *type = json_object_get_string(json_object_object_get(msg, "type"));
             printf("Received message: type=%s\n", type ? type : "NULL");
             
@@ -144,7 +145,7 @@ int main() {
             json_object_put(msg);
         }
         
-        sleep(1);
+        usleep(500000); // Slow down to 0.5 seconds between updates
     }
 
     close(sock);
@@ -200,13 +201,35 @@ struct json_object *receive_json(int sock) {
 }
 
 void navigate_to_target(Drone *drone) {
-    if (drone->coord.x < drone->target.x) drone->coord.x++;
-    else if (drone->coord.x > drone->target.x) drone->coord.x--;
-    if (drone->coord.y < drone->target.y) drone->coord.y++;
-    else if (drone->coord.y > drone->target.y) drone->coord.y--;
+    // Only move if not already at target
+    if (drone->coord.x != drone->target.x || drone->coord.y != drone->target.y) {
+        // Move horizontally first, then vertically
+        if (drone->coord.x < drone->target.x) {
+            drone->coord.x++;
+        } 
+        else if (drone->coord.x > drone->target.x) {
+            drone->coord.x--;
+        }
+        // Only move vertically if we're aligned horizontally
+        else if (drone->coord.y < drone->target.y) {
+            drone->coord.y++;
+        } 
+        else if (drone->coord.y > drone->target.y) {
+            drone->coord.y--;
+        }
+    }
 
+    // Now check if we have arrived - but don't send MISSION_COMPLETE yet
+    // We'll let the next status update send our exact position first
     if (drone->coord.x == drone->target.x && drone->coord.y == drone->target.y) {
+        printf("[DEBUG] Drone reached target coordinates (%d,%d)\n", 
+               drone->target.x, drone->target.y);
+        
+        // Set status to IDLE immediately
         drone->status = IDLE;
+        
+        // Send MISSION_COMPLETE in the main thread after the status update
+        // so the server knows our exact position first
         char drone_id[10];
         snprintf(drone_id, sizeof(drone_id), "D%d", drone->id);
         struct json_object *complete = json_object_new_object();
@@ -215,7 +238,9 @@ void navigate_to_target(Drone *drone) {
         json_object_object_add(complete, "mission_id", json_object_new_string(drone->mission_id));
         json_object_object_add(complete, "timestamp", json_object_new_int64(time(NULL)));
         json_object_object_add(complete, "success", json_object_new_boolean(1));
-        json_object_object_add(complete, "details", json_object_new_string("Delivered aid to survivor"));
+        json_object_object_add(complete, "details", json_object_new_string("Reached survivor location"));
+        
+        // Send the message now - our STATUS_UPDATE will be sent first in the main loop
         send_json(drone->sock, complete);
         printf("Sent MISSION_COMPLETE: mission_id=%s\n", drone->mission_id);
         json_object_put(complete);

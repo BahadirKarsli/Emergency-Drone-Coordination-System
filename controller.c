@@ -146,8 +146,8 @@ int main() {
     printf("SDL Window Initialized. Starting main UI loop.\n");
     
     // Main loop with frame rate limiting
-    const int TARGET_FPS = 60;
-    const int FRAME_DELAY = 1000 / TARGET_FPS;
+    const int TARGET_FPS = 250;
+    const int FRAME_DELAY = 300;
     Uint32 frameStart;
     int frameTime;
     
