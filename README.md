@@ -1,6 +1,6 @@
-#Report
+# Report
 
-##1. Design Choices
+## 1. Design Choices
 
 Bu proje, insansız hava araçları (dronelar) ve kurtarılacak bireyler (survivorlar) arasındaki etkileşimi simüle eden çoklu iş parçacıklı bir sistemdir. Tasarım aşamasında, uygulamanın gerçek zamanlı ve senkronize biçimde çalışabilmesi için aşağıdaki kritik tasarım kararları alınmıştır:
 
@@ -29,7 +29,7 @@ while (current != NULL) {
 - **Duruma Bağlı Renk Kodlama:** Droneların durumu (IDLE, ON\_MISSION, DISCONNECTED) renklerle ayrılarak kullanıcıya hızlı durum algısı sağlar. Bu tasarım, görsel geribildirim ve simülasyonun izlenebilirliği açısından önemlidir.
 - **Socket Tabanlı İletişim:** Proje mimarisinde, dronelar ile merkezi kontrol sistemi arasında iletişimi sağlamak üzere TCP socket’leri kullanılmıştır. Bu yapı, farklı cihazlar arasında gerçek zamanlı veri alışverişini mümkün kılarak simülasyonun gerçekçiliğini artırır. Server-client modeliyle, sunucu (server) tarafı kontrol ve veri güncellemelerini yönetirken, client (drone) tarafları kendi durumlarını güncelleyip sunucuya iletir.
 -----
-##2. Synchronization Strategy
+## 2. Synchronization Strategy
 
 Proje mimarisi, birden çok iş parçacığının ortak veri yapıları üzerinde eşzamanlı işlem yaptığı senaryolara dayanır. Bu yüzden veri tutarlılığı ve yarış durumlarının önlenmesi kritik önemdedir.
 
@@ -55,7 +55,7 @@ Bu sayede drone listesi ve bireysel drone nesneleri ayrı ayrı korunarak, farkl
 - **Grafik ve Veri Ayrımı:** Grafik işlemleri ana thread’de yürütülürken, veri güncellemeleri başka thread’lerce yapılır. Bu ayrım, grafik güncellemeleri ile veri değişikliklerinin çakışmasını önler ve program kararlılığını artırır.
 - **Socket Erişiminde Senkronizasyon:** Server ve client arasında socket üzerinden veri aktarımı sırasında, aynı socket kaynaklarına erişim thread-safe şekilde kontrol edilir. Örneğin, gelen/verilen mesajlar mutex ile korunur veya asenkron I/O teknikleri kullanılır. Böylece veri çakışmaları engellenir ve iletişim güvenilirliği sağlanır.
 -----
-#3. Performance Analysis
+## 3. Performance Analysis
 
 Projede performans, gerçek zamanlı simülasyonun gerektirdiği akıcılık ve veri tutarlılığı dengesi gözetilerek optimize edilmiştir.
 
