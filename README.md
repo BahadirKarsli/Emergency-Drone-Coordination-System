@@ -1,4 +1,4 @@
-# Report
+# Emergency Drone Coordination System (Client-Server app)
 
 ## 1. Design Choices
 
